@@ -59,8 +59,8 @@ class resnet50EmbeddingsAdaptive(nn.Module):
         # ResNet initial layers (conv1, bn1, relu, maxpool)
         x = self.model.conv1(x)
         x = self.model.bn1(x)
-        x = self.model.relu(x)
-        x = self.model.maxpool(x)
+        x = self.model.relu(x        x = self.model.maxpool(x)
+
 
         # Forward pass through the 4 ResNet layers (consisting of residual blocks)
         x = self.model.layer1(x)

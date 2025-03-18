@@ -1,4 +1,6 @@
+import random
 import os
+from os.path import isfile
 import cv2
 import numpy as np
 from typing import List, Any
@@ -7,7 +9,7 @@ from torch.utils.data import DataLoader
 from PIL import Image
 import io
 
-from dataset.dataset import DataItem, DatasetGenerator
+from datasets.dataset import DataItem, DatasetGenerator
 
 
 class DatasetWrapper:
@@ -29,6 +31,7 @@ class DatasetWrapper:
     def loop_through_dir(
         self,
         dir: str,
+        depth_dir: str,
         label: int,
         augment_times: int = 0,
     ) -> List[DataItem]:
@@ -39,38 +42,60 @@ class DatasetWrapper:
         for image_path in os.listdir(dir):
             if os.path.splitext(image_path)[1].lower() in allowed_extensions:
                 image_path = os.path.join(dir, image_path)
-                if cnt == 0:
-                    print(image_path)
-                    cnt = 3
-                items.append(DataItem(image_path, False, label))
-                items.extend(
-                    DataItem(image_path, True, label) for _ in range(augment_times)
-                )
+                depth_path = os.path.join(depth_dir, image_path) 
+                if os.path.isfile(image_path) and os.path.isfile(depth_path):
+                    if cnt == 0:
+                        print(image_path)
+                        cnt = 3
+                    items.append(DataItem(image_path, depth_path, False, label))
+                    items.extend(
+                        DataItem(image_path, depth_path, True, label) for _ in range(augment_times)
+                    )
+                else:
+                    print(f"check color and depth image pair for {image_path}")
 
         return items
 
     def transform(self, data: DataItem) -> Any:
-        image = cv2.imread(data.path, cv2.IMREAD_COLOR)
-        if image is None:
+        color_img = cv2.imread(data.path, cv2.IMREAD_COLOR)
+        if color_img is None:
             print(f"Failed to load image: {data.path}")
-            return None, None  # Or handle this case as needed
+            return None, None  
 
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, (self.width, self.height))
-        image = (image - image.min()) / ((image.max() - image.min()) or 1.0)
-        image = np.transpose(image.astype("float32"), axes=(2, 0, 1))
+        color_img = cv2.cvtColor(color_img, cv2.COLOR_BGR2RGB)
+        color_img = cv2.resize(color_img, (self.width, self.height))
+        color_img = (color_img - color_img.min()) / ((color_img.max() - color_img.min()) or 1.0)
+        color_img = np.transpose(color_img.astype("float32"), axes=(2, 0, 1))
+
+        depth_img = cv2.imread(data.depth_path, cv2.IMREAD_UNCHANGED)
+        if depth_img is None:
+            print(f"Failed to load depth image: {data.depth_path}")
+            return None, None
+
+        depth_img = depth_img.astype("float32")
+        depth_img = cv2.resize(depth_img, (self.width, self.height))
+        depth_img = (depth_img - depth_img.min()) / ((depth_img.max() - depth_img.min()) or 1.0)
+        if len(depth_img.shape) == 2:
+            depth_img = np.expand_dims(depth_img, axis=-1)  # (H, W, 1)
+            depth_img = np.repeat(depth_img, 3, axis=-1)   # (H, W, 3)
+
+        depth_img = np.transpose(depth_img, (2, 0, 1))  # (3, H, W)
 
         label = np.zeros((self.classes), dtype=np.float32)
         label[data.label] = 1  # One-hot encoding
 
-        return image, label
+        return color_img, depth_img, label
 
-    def augment(self, image: np.ndarray, label: np.ndarray) -> Any:
-        
-        if not isinstance(image, np.ndarray):
-            raise TypeError(f"Expected image to be a numpy array, but got {type(image)}")
 
+
+    def augment(self,color_img: np.ndarray, depth_img: np.ndarray, label: np.ndarray) -> Any:
         
+        if not isinstance(color_img, np.ndarray):
+            raise TypeError(f"Expected image to be a numpy array, but got {type(color_img)}")
+        if not isinstance(depth_img, np.ndarray):
+            raise TypeError(f"Expected image to be a numpy array, but got {type(depth_img)}")
+
+        # Define the Transformations
         transform = A.Compose(
             [
                 A.HorizontalFlip(p=0.25),
@@ -81,32 +106,36 @@ class DatasetWrapper:
                 RandomJPEGCompressionAlbumentations(
                     quality_min=50, quality_max=100, p=0.5
                 ),
-            ]
+            ],
+            additional_targets={"depth": "image"}  # Register depth image for simultaneous transformation
         )
 
-        transformed = transform(image=image)
-        transformed_image = transformed["image"]
+        # Apply the transformations
+        transformed = transform(image=color_img, depth=depth_img)
 
-        return transformed_image, label
+        # Get Transformed Images
+        transformed_color = transformed["image"]
+        transformed_depth = transformed["depth"]
 
-    def augment_bonafide(self, images: List[np.ndarray], labels: List[np.ndarray]):
-        """
-        Augments all bonafide images in the dataset.
-        Args:
-            images (List[np.ndarray]): List of bonafide images.
-            labels (List[np.ndarray]): Corresponding labels for the images.
-        Returns:
-            List[Tuple[np.ndarray, np.ndarray]]: Augmented images with labels.
-        """
-        augmented = []
-        for img, lbl in zip(images, labels):
-            
-            if not isinstance(img, np.ndarray):
-                img = np.array(img)
-            
-            augmented_img, augmented_lbl = self.augment(img, lbl)
-            augmented.append((augmented_img, augmented_lbl))
-        return augmented
+        
+        # transform = A.Compose(
+        #     [
+        #         A.HorizontalFlip(p=0.25),
+        #         A.VerticalFlip(p=0.25),
+        #         A.RandomBrightnessContrast(p=0.2),
+        #         A.InvertImg(p=0.05),
+        #         A.PixelDropout(p=0.02),
+        #         RandomJPEGCompressionAlbumentations(
+        #             quality_min=50, quality_max=100, p=0.5
+        #         ),
+        #     ]
+        # )
+
+        # transformed = transform(image=image)
+        # transformed_image = transformed["image"]
+
+        return transformed_color, transformed_depth, label
+
 
     def get_image_count(self, dataset_type: str) -> int:
         """
@@ -132,36 +161,77 @@ class DatasetWrapper:
         shuffle: bool = True,
         num_workers: int = 4,
     ):
-        data: List[DataItem] = []
-        for morph_type in morph_types:
-            for label, cid in enumerate(self.CLASS_NAMES):
-                augment_count = augment_times * 2 if cid == "bonafide" else augment_times
-                if cid == "morph":
-                    cid = f"morph/{morph_type}/facedetect"
+        
+        if morph_types == ['3D_morph']:
+            print(morph_types)
+            data: List[DataItem] = []
+            for morph_type in morph_types:
+                for label, cid in enumerate(self.CLASS_NAMES):
+                    augment_count = augment_times * 2 if cid == "bonafide" else augment_times
+                    if cid == "morph":
+                        cid = "Morph"
+                    elif cid == "bonafide":
+                        cid = "Bona"
 
-                data.extend(
-                    self.loop_through_dir(
-                        os.path.join(self.root_dir, cid, split_type),
-                        label,
-                        augment_count,
+                    data.extend(
+                        self.loop_through_dir(
+                            os.path.join(self.root_dir, cid, "Color"),
+                            os.path.join(self.root_dir, cid, "Depth"),
+                            label,
+                            augment_count,
+                        )
+                    )
+
+            # Shuffle and divide data among models
+            random.shuffle(data)
+            datasets = []
+            split_size = len(data) // num_models
+            for i in range(num_models):
+                subset = data[i * split_size : (i + 1) * split_size]
+                datasets.append(
+                    DataLoader(
+                        DatasetGenerator(subset, self.transform, self.augment),
+                        batch_size=batch_size,
+                        shuffle=shuffle,
+                        num_workers=num_workers,
+                        pin_memory=True,
                     )
                 )
 
-        # Shuffle and divide data among models
-        np.random.shuffle(data)
-        datasets = []
-        split_size = len(data) // num_models
-        for i in range(num_models):
-            subset = data[i * split_size : (i + 1) * split_size]
-            datasets.append(
-                DataLoader(
-                    DatasetGenerator(subset, self.transform, self.augment),
-                    batch_size=batch_size,
-                    shuffle=shuffle,
-                    num_workers=num_workers,
-                    pin_memory=True,
+        else:   
+            data: List[DataItem] = []
+            for morph_type in morph_types:
+                for label, cid in enumerate(self.CLASS_NAMES):
+                    augment_count = augment_times * 2 if cid == "bonafide" else augment_times
+                    if cid == "morph":
+                        cid = f"morph/{morph_type}"
+                        
+                    depth_dir = self.root_dir.replace("color", "depth")
+
+                    data.extend(
+                        self.loop_through_dir(
+                            os.path.join(self.root_dir, cid, split_type),
+                            os.path.join(depth_dir, cid, split_type),
+                            label,
+                            augment_count,
+                        )
+                    )
+
+            # Shuffle and divide data among models
+            random.shuffle(data)
+            datasets = []
+            split_size = len(data) // num_models
+            for i in range(num_models):
+                subset = data[i * split_size : (i + 1) * split_size]
+                datasets.append(
+                    DataLoader(
+                        DatasetGenerator(subset, self.transform, self.augment),
+                        batch_size=batch_size,
+                        shuffle=shuffle,
+                        num_workers=num_workers,
+                        pin_memory=True,
+                    )
                 )
-            )
 
         if len(datasets) == 1:
             return datasets[0]
@@ -202,27 +272,16 @@ class RandomJPEGCompressionAlbumentations(A.ImageOnlyTransform):
         self.quality_max = quality_max
 
     def apply(self, img, **params):
-        # Randomly select a JPEG quality
         quality = np.random.randint(self.quality_min, self.quality_max)
-
-        # Apply JPEG compression to the image
         buffer = io.BytesIO()
-
-        # Ensure the input image is uint8 type before saving
         img = (img * 255).astype(np.uint8)
-
-        # Ensure the image is in [H, W, C] format for saving as JPEG
         if img.ndim == 3 and img.shape[0] == 3:
-            img = img.transpose(1, 2, 0)  # Convert from [C, H, W] to [H, W, C]
+            img = img.transpose(1, 2, 0)  
 
-        pil_img = Image.fromarray(img)  # Convert numpy image to PIL
+        pil_img = Image.fromarray(img)  
         pil_img.save(buffer, format="JPEG", quality=quality)
-
-        # Reload the image from the buffer
         buffer.seek(0)
         img = np.array(Image.open(buffer))
-
-        # Convert back to [C, H, W] format
         img = img.transpose(2, 0, 1)
         img = img.astype(np.float32) / 255.0
 

@@ -6,8 +6,9 @@ import os
 
 
 class DataItem:
-    def __init__(self, path: str, to_augment: bool, label: int):
+    def __init__(self, path: str, depth_path:str, to_augment: bool, label: int):
         self.path = path
+        self.depth_path = depth_path
         self.to_augment = to_augment
         self.label = label
 
@@ -17,28 +18,29 @@ class DatasetGenerator(Dataset):
         self,
         data,
         transform: Callable[[DataItem], ndarray],
-        augment: Callable[[ndarray, ndarray], ndarray],
+        augment: Callable[[ndarray,ndarray, ndarray], ndarray],
     ) -> None:
         super(DatasetGenerator, self).__init__()
 
         self.data: List[DataItem] = data
         self.transform: Callable[[DataItem], ndarray] = transform
-        self.augment: Callable[[ndarray, ndarray], ndarray] = augment
+        self.augment: Callable[[ndarray, ndarray, ndarray], ndarray] = augment
 
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx) -> Tuple[ndarray, ndarray]:
-        img, label = self.transform(self.data[idx])
+    def __getitem__(self, idx) -> Tuple[ndarray, ndarray, ndarray]:
+        color_img, depth_img, label = self.transform(self.data[idx])
         image_path = self.data[idx].path
+        depth_path = self.data[idx].depth_path
 
         if self.data[idx].to_augment:
-            img, label = self.augment(img, label)
+            color_img, depth_img, label = self.augment(color_img, depth_img, label)
 
-        if img is None or label is None:
+        if color_img is None or depth_img is None or label is None:
             print(f"Warning: No data found for index {idx}")
         
-        return img, label
+        return color_img, depth_img, label
 
     # def __getitem__(self, idx) -> Tuple[ndarray, ndarray]:
     #     image_data = self.data[idx]
@@ -57,3 +59,4 @@ class DatasetGenerator(Dataset):
 
     #     return img, label
 
+ 
