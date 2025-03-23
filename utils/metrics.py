@@ -313,8 +313,10 @@ def calculate_eer(genuine, imposter, bins=10_001, batch_size=5000):
 # # sota_name = 'Tapia_etal'
 # # sota_name = 'clip'
 # sota_name = 'self_attn'
+# sota_name = 'spatial_channel_mult_12'
 # sota_name = 'spatial_channel_12'
-sota_name = 'lbp_svm'
+sota_name = 'dgcnn_simpleview_svm'
+# sota_name = 'lbp_svm'
 save_dir = f"scores/{sota_name}/iPhone12_filled/lmaubo"
 # save_dir = f"scores/sota/{sota_name}/digital/lmaubo"
 genuine_path = f"{save_dir}/genuine.npy"

@@ -390,42 +390,42 @@ def compute_eer(models, morph_types, root_dirs):
 # pretrained_weights = torch.load('checkpoints/spatial_channel_11/spatial_channel_11_epoch_5.pth')
 # model_1.load_state_dict(pretrained_weights, strict = False)
 # model_1.eval()
-# model16_12 = AttentionResNet2(attention_types=["spatial","channel"])
-# model17_12 = AttentionResNet2(attention_types=["spatial", "channel"])
-# model_1_12 = DualAttentionModel(model1=model16_12, model2=model17_12)
-# pretrained_weights = torch.load('checkpoints/spatial_channel_12/spatial_channel_12_epoch_15.pth')
-# model_1_12.load_state_dict(pretrained_weights, strict = False)
-# model_1_12.eval()
+model16_12 = AttentionResNet2(attention_types=["spatial","channel"])
+model17_12 = AttentionResNet2(attention_types=["spatial", "channel"])
+model_1_12 = DualAttentionModel(model1=model16_12, model2=model17_12)
+pretrained_weights = torch.load('checkpoints/spatial_channel_mult_12/spatial_channel_mult_12_epoch_14.pth')
+model_1_12.load_state_dict(pretrained_weights, strict = False)
+model_1_12.eval()
 
 
 # single
-model3 = AttentionResNet(attention_types=["channel"])
-model_c = SingleAttentionModel(model=model3)
-pretrained_weights = torch.load('checkpoints/channel_12_color/channel_12_color_epoch_11.pth')
-model_c.load_state_dict(pretrained_weights, strict = False)
-model_c.eval()
-model_c_depth = SingleAttentionModel(model=model3)
-pretrained_weights = torch.load('checkpoints/channel_12_depth/channel_12_depth_epoch_12.pth')
-model_c_depth.load_state_dict(pretrained_weights, strict = False)
-model_c_depth.eval()
-model5 = AttentionResNet(attention_types=["spatial"])
-model_s = SingleAttentionModel(model=model5)
-pretrained_weights = torch.load('checkpoints/spatial_12_color/spatial_12_color_epoch_11.pth')
-model_s.load_state_dict(pretrained_weights, strict = False)
-model_s.eval()
-model_s_depth = SingleAttentionModel(model=model5)
-pretrained_weights = torch.load('checkpoints/spatial_12_depth/spatial_12_depth_epoch_8.pth')
-model_s_depth.load_state_dict(pretrained_weights, strict = False)
-model_s_depth.eval()
-model16 = AttentionResNet2(attention_types=["spatial","channel"])
-model_1 = SingleAttentionModel(model=model16)
-pretrained_weights = torch.load('checkpoints/spatial_channel_12_color/spatial_channel_12_color_epoch_10.pth')
-model_1.load_state_dict(pretrained_weights, strict = False)
-model_1.eval()
-model_1_depth = SingleAttentionModel(model=model16)
-pretrained_weights = torch.load('checkpoints/spatial_channel_12_depth/spatial_channel_12_depth_epoch_10.pth')
-model_1_depth.load_state_dict(pretrained_weights, strict = False)
-model_1_depth.eval()
+# model3 = AttentionResNet(attention_types=["channel"])
+# model_c = SingleAttentionModel(model=model3)
+# pretrained_weights = torch.load('checkpoints/channel_12_color/channel_12_color_epoch_11.pth')
+# model_c.load_state_dict(pretrained_weights, strict = False)
+# model_c.eval()
+# model_c_depth = SingleAttentionModel(model=model3)
+# pretrained_weights = torch.load('checkpoints/channel_12_depth/channel_12_depth_epoch_12.pth')
+# model_c_depth.load_state_dict(pretrained_weights, strict = False)
+# model_c_depth.eval()
+# model5 = AttentionResNet(attention_types=["spatial"])
+# model_s = SingleAttentionModel(model=model5)
+# pretrained_weights = torch.load('checkpoints/spatial_12_color/spatial_12_color_epoch_11.pth')
+# model_s.load_state_dict(pretrained_weights, strict = False)
+# model_s.eval()
+# model_s_depth = SingleAttentionModel(model=model5)
+# pretrained_weights = torch.load('checkpoints/spatial_12_depth/spatial_12_depth_epoch_8.pth')
+# model_s_depth.load_state_dict(pretrained_weights, strict = False)
+# model_s_depth.eval()
+# model16 = AttentionResNet2(attention_types=["spatial","channel"])
+# model_1 = SingleAttentionModel(model=model16)
+# pretrained_weights = torch.load('checkpoints/spatial_channel_12_color/spatial_channel_12_color_epoch_10.pth')
+# model_1.load_state_dict(pretrained_weights, strict = False)
+# model_1.eval()
+# model_1_depth = SingleAttentionModel(model=model16)
+# pretrained_weights = torch.load('checkpoints/spatial_channel_12_depth/spatial_channel_12_depth_epoch_10.pth')
+# model_1_depth.load_state_dict(pretrained_weights, strict = False)
+# model_1_depth.eval()
 
 # attn_types = [["channel"], ["spatial"],["self"],["channel", "spatial"], ["channel", "self"], ["spatial", "channel", "self"], ["spatial", "self"]]
 attn_types = [["channel", "spatial"], ["channel", "self"], ["spatial", "channel", "self"], ["spatial", "self"]]
@@ -442,21 +442,15 @@ models = {}
 #     models[model_name] = model    
 
 models = {
-    "spatial_channel_12_color": model_1,
-    "spatial_channel_12_depth": model_1_depth,
-    # "spatial_channel_12": model_1_12,
-    # "channel_spatial": model_1,
-    # "channel_self" : model_2,
-    # "spatial_channel_self" : model_3,
-    # "spatial_self" : model_4,
-    # "cross_attn": model_cross,
-    "channel_12_color" : model_c,
-    "spatial_12_color" : model_s,
-    "channel_12_depth" : model_c_depth,
-    "spatial_12_depth" : model_s_depth,
+    # "spatial_channel_12_color": model_1,
+    # "spatial_channel_12_depth": model_1_depth,
+    # "channel_12_color" : model_c,
+    # "spatial_12_color" : model_s,
+    # "channel_12_depth" : model_c_depth,
+    # "spatial_12_depth" : model_s_depth,
     # "channel_12" : model_c_12,
     # "spatial_12" : model_s_12,
-    # "self" : model,
+    "spatial_channel_mult_12": model_1_12,
 }
 
 compute_eer(models, morph_types, root_dirs)

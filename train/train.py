@@ -199,8 +199,9 @@ def main():
     )
 
     multiprocessing.set_start_method("spawn", force=True)
-    attn_types = [["spatial", "channel"], ["channel"], ["spatial"]]
-    # attn_types = [["channel", "spatial"], ["channel", "self"], ["spatial", "channel", "self"], ["spatial", "self"]]
+    # attn_types = [["spatial", "channel"], ["channel"], ["spatial"]]
+    attn_types = [["spatial", "channel"]]
+    
     processes = []
     
     for attn_type in attn_types:
@@ -211,12 +212,12 @@ def main():
             model1 = AttentionResNet(attention_types=attn_type)
             model2 = AttentionResNet(attention_types=attn_type)
             
-        # model = DualAttentionModel(model1=model1, model2=model2)
-        model = SingleAttentionModel(model=model1)
+        model = DualAttentionModel(model1=model1, model2=model2)
+        # model = SingleAttentionModel(model=model1)
         model_name = "_".join(attn_type)
-        # train_model(model=model, model_name= f"{model_name}_11", trainds=train_dataset, testds=test_dataset)
-        train_model(model=model, model_name= f"{model_name}_12_color", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'color')
-        train_model(model=model, model_name= f"{model_name}_12_depth", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'depth')
+        train_model(model=model, model_name= f"{model_name}_mult_12", trainds=train_dataset, testds=test_dataset)
+        # train_model(model=model, model_name= f"{model_name}_12_color", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'color')
+        # train_model(model=model, model_name= f"{model_name}_12_depth", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'depth')
 
     # CROSS ATTN TRAINING
     # model1 = AttentionResNet2(attention_types=[])

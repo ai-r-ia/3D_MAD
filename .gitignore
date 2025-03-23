@@ -1,5 +1,6 @@
 *.pth
 *.png
 *.log
-*.npy
+# *.npy
 *.pkl
+*.ply
