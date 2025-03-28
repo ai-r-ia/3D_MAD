@@ -1,4 +1,8 @@
 import os
+from configs.config import create_parser, get_logger
+from configs.seed import set_seed
+from torch.utils.data import Subset, DataLoader
+from sklearn.model_selection import train_test_split
 from models.dual_attn import DualAttentionModel, SingleAttentionModel
 import torch
 import torch.nn as nn
@@ -7,13 +11,13 @@ from tqdm import tqdm
 import random
 import numpy as np
 from datasets.datasetwrapper import DatasetWrapper
-import logging
 from typing import List
 from torch.optim.adam import Adam
 from torch.optim.adamw import AdamW
 from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import multiprocessing
+from multiprocessing import Pool
 
 from train_classifier import train_classifier
 from utils.early_stopping import EarlyStopping
@@ -26,7 +30,7 @@ DUAL = 2
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
+MAX_CONCURRENT_PROCESSES = 2
 AUGMENT_TIMES = 2
 alpha = 0.5  
 num_epochs = 300
@@ -34,12 +38,12 @@ batch_size = 64
 learning_rate = 1e-4
 patience = 5
 
-def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, imagetype = None)-> int: 
+def train_model(model, model_name: str, trainds, testds, logger, modeltype:int = DUAL, imagetype = None)-> int: 
     
-    os.makedirs(f"checkpoints/{model_name}", exist_ok=True)
-    log_file = f"logs/{model_name}.log"
-    logging.basicConfig(filename=log_file, level=logging.INFO, format="%(asctime)s - %(message)s")
-    logger = logging.getLogger()
+    os.makedirs(f"checkpoints/Protocol_0/{model_name}", exist_ok=True)
+    
+    # logging.basicConfig(filename=log_file, level=logger.INFO, format="%(asctime)s - %(message)s")
+    # logging = logger.getLogger()
     optimizer = Adam([p for p in model.parameters() if p.requires_grad], lr=learning_rate)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
     criterion = nn.CrossEntropyLoss()
@@ -47,8 +51,7 @@ def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, i
     validation_after = 1
     scaler = torch.cuda.amp.GradScaler()  
     
-    print(f"Training {model_name}")
-    logging.info(f"Training {model_name}")
+    logger.info(f"Training {model_name}")
     model.to(device)
     model.train()
     train_accuracies = []
@@ -70,6 +73,7 @@ def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, i
             color_imgs, depth_imgs, labels = color_imgs.to(device, non_blocking=True), depth_imgs.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             if labels.dim() > 1:
                 y = labels
+                # print(labels)
                 labels = torch.argmax(labels, dim=1)
             optimizer.zero_grad()
             with torch.cuda.amp.autocast():
@@ -105,7 +109,7 @@ def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, i
         scheduler.step()
         del color_imgs, depth_imgs, labels, outputs, loss
         torch.cuda.empty_cache()
-        logging.info(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss:.4f}, Accuracy: {accuracy:.2f}%")
+        logger.info(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss:.4f}, Accuracy: {accuracy:.2f}%")
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {total_loss:.4f}, Accuracy: {accuracy:.2f}%")
     
         if not epoch % validation_after:
@@ -149,16 +153,16 @@ def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, i
 
 
             # Early stopping check
-            early_stopping(validation_loss, model, f"checkpoints/{model_name}/{model_name}_best.pth")
+            early_stopping(validation_loss, model, f"checkpoints/Protocol_0/{model_name}/{model_name}_best.pth")
             if early_stopping.early_stop:
-                logging.info("Early stopping triggered. Training stopped.")
+                logger.info("Early stopping triggered. Training stopped.")
                 break
 
-            logging.info(f"Epoch [{epoch+1}/{num_epochs}], test Loss: {validation_loss:.4f}, test Accuracy: {test_accuracy:.2f}%")
+            logger.info(f"Epoch [{epoch+1}/{num_epochs}], test Loss: {validation_loss:.4f}, test Accuracy: {test_accuracy:.2f}%")
             print(f"Epoch [{epoch+1}/{num_epochs}], test Loss: {validation_loss:.4f}, test Accuracy: {test_accuracy:.2f}%")
         
-        torch.save(model.state_dict(), f"checkpoints/{model_name}/{model_name}_epoch_{epoch+1}.pth")
-        logging.info(f"Checkpoint saved for {model_name} at epoch {epoch+1}")
+        torch.save(model.state_dict(), f"checkpoints/Protocol_0/{model_name}/{model_name}_epoch_{epoch+1}.pth")
+        logger.info(f"Checkpoint saved for {model_name} at epoch {epoch+1}")
 
         model.train()  # Ensure model is back in training mode after validation
         
@@ -169,19 +173,40 @@ def train_model(model, model_name: str, trainds, testds, modeltype:int = DUAL, i
     
 
 
-def run_model(attn_type, train_dataset, test_dataset):
+def run_model(attn_type, trainds_name, train_dataset, test_dataset, reduction, kernel_size, logger):
+# def run_model(args):
     torch.cuda.set_device(0)  
-    print(f"Training {attn_type}")
-    model1 = AttentionResNet2(attention_types=[attn_type])
-    model2 = AttentionResNet2(attention_types=[attn_type])
-    model = DualAttentionModel(model1=model1, model2=model2)
-    train_model(model=model, model_name=attn_type, trainds=train_dataset, testds=test_dataset)
-    print(f"{attn_type} training done")
+    # attn_type, train_dataset, test_dataset, reduction, kernel_size = args  # Unpack here
+    logger.info(f"Running model with attn_type={attn_type}, reduction={reduction}, kernel_size={kernel_size}")
+    logger.info(f"Training {attn_type}")
+    model_name = "_".join(attn_type)
+
+    if len(attn_type) > 1:
+        model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+        model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+        model = DualAttentionModel(model1=model1, model2=model2)
+   
+        train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}", trainds=train_dataset, testds=test_dataset, logger = logger)
+   
+    else:
+        model1 = AttentionResNet(attention_types=attn_type)
+        model = SingleAttentionModel(model=model1)
+        
+        train_model(model=model, model_name= f"{model_name}_{trainds_name}_color", trainds=train_dataset, testds=test_dataset, logger = logger,modeltype = SINGLE, imagetype = 'color')
+        
+        model1_depth = AttentionResNet(attention_types=attn_type)
+        depth_model = SingleAttentionModel(model=model1_depth)
+        
+        train_model(model=depth_model, model_name= f"{model_name}_{trainds_name}_depth", trainds=train_dataset, testds=test_dataset, logger = logger, modeltype = SINGLE, imagetype = 'depth')
+
+    logger.info(f"{attn_type} training done")
     
    
-def main():
-    
-    dataset_wrapper = DatasetWrapper(root_dir="/mnt/extravolume/data/iPhone11_filled/color/digital/")
+def main(args):
+    protocol_num = 0
+    logger = get_logger(filename = "proposed_params_ablation", protocol = protocol_num)
+    logger.info(f"training proposed on {args.trainds}")
+    dataset_wrapper = DatasetWrapper(root_dir=f"{args.root_dir}/{args.trainds}_filled/color/digital/")
 
     train_dataset = dataset_wrapper.get_train_dataset(
         augment_times=AUGMENT_TIMES,
@@ -190,59 +215,78 @@ def main():
         num_models=1,
         shuffle=True,
     )
-    test_dataset = dataset_wrapper.get_test_dataset(
-        augment_times=AUGMENT_TIMES,
-        batch_size=batch_size,
-        morph_types=["lmaubo"],
-        num_models=1,
-        shuffle=True,
+
+    full_dataset = train_dataset.dataset
+
+    one_hot_labels = np.array([full_dataset[i][2] for i in range(len(full_dataset))]) 
+
+    labels = np.argmax(one_hot_labels, axis=1)
+
+    train_indices, val_indices = train_test_split(
+        np.arange(len(full_dataset)), test_size=0.3, stratify=labels, random_state=42
     )
 
+    train_subset = Subset(full_dataset, train_indices)
+    val_subset = Subset(full_dataset, val_indices)
+
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
+
+    train_labels, val_labels = one_hot_labels[train_indices], one_hot_labels[val_indices]  
+
+    logger.info(f"Total samples: {len(full_dataset)}")
+    logger.info(f"Train samples: {len(train_indices)} ({len(train_indices)/len(full_dataset)*100:.2f}%)")
+    logger.info(f"Validation samples: {len(val_indices)} ({len(val_indices)/len(full_dataset)*100:.2f}%)")
+   
+    unique_classes, train_counts = np.unique(np.argmax(train_labels, axis=1), return_counts=True)
+    unique_classes, val_counts = np.unique(np.argmax(val_labels, axis=1), return_counts=True)
+
+    logger.info(f"Class distribution in Train set: {dict(zip(unique_classes, train_counts))}")
+    logger.info(f"Class distribution in Validation set: {dict(zip(unique_classes, val_counts))}")
+    
     multiprocessing.set_start_method("spawn", force=True)
     # attn_types = [["spatial", "channel"], ["channel"], ["spatial"]]
     attn_types = [["spatial", "channel"]]
-    
+    reductions = [4, 8, 16]
+    kernel_sizes = [3,5,7]    
     processes = []
-    
-    for attn_type in attn_types:
-        if len(attn_type) > 1:
-            model1 = AttentionResNet2(attention_types=attn_type)
-            model2 = AttentionResNet2(attention_types=attn_type)
-        else:
-            model1 = AttentionResNet(attention_types=attn_type)
-            model2 = AttentionResNet(attention_types=attn_type)
-            
-        model = DualAttentionModel(model1=model1, model2=model2)
-        # model = SingleAttentionModel(model=model1)
-        model_name = "_".join(attn_type)
-        train_model(model=model, model_name= f"{model_name}_mult_12", trainds=train_dataset, testds=test_dataset)
-        # train_model(model=model, model_name= f"{model_name}_12_color", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'color')
-        # train_model(model=model, model_name= f"{model_name}_12_depth", trainds=train_dataset, testds=test_dataset, modeltype = SINGLE, imagetype = 'depth')
-
+   
+    for reduction in reductions:
+        for kernel_size in kernel_sizes: 
+            for attn_type in attn_types:
+               run_model(attn_type=attn_type, trainds_name=args.trainds, train_dataset= train_loader, test_dataset=val_loader, reduction=reduction, kernel_size=kernel_size, logger = logger)
+   
     # CROSS ATTN TRAINING
     # model1 = AttentionResNet2(attention_types=[])
     # model2 = AttentionResNet2(attention_types=[])
     # model = DualAttentionModel(model1=model1, model2=model2, cross = True)
     # train_model(model=model, model_name= "cross", trainds=train_dataset, testds=test_dataset)
 
-    for attn_type in attn_types:
-        p = multiprocessing.Process(target=run_model, args=(attn_type, train_dataset, test_dataset))
-        processes.append(p)
-        p.start()
 
-    for p in processes:
-        p.join()
+    # for reduction in reductions:
+    #     for kernel_size in kernel_sizes:
+    #         for attn_type in attn_types:
+    #             p = multiprocessing.Process(target=run_model, args=(attn_type, train_dataset, test_dataset, reduction, kernel_size))
+    #             processes.append(p)
+    #             p.start()
 
-    print("All models finished training.")
+    # for p in processes:
+    #     p.join()
+
+    # with Pool(processes=os.cpu_count()) as pool:
+    #     args_list = [(attn_type, train_dataset, test_dataset, reduction, kernel_size) 
+    #                  for reduction in reductions 
+    #                  for kernel_size in kernel_sizes 
+    #                  for attn_type in attn_types]
+
+    #     pool.map(run_model, args_list)
+        
+    logger.info("All proposed models finished training.")
      
 
 if __name__ == "__main__":
-    SEED = 42
-    torch.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
-    np.random.seed(SEED)
-    random.seed(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    main()
+    set_seed()
+    parser = create_parser()
+    args = parser.parse_args()
+    main(args)
     

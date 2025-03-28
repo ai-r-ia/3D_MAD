@@ -1,6 +1,8 @@
+from genericpath import isdir
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from configs.config import get_logger
 from scipy.stats import norm
 from tqdm import tqdm
 import matplotlib.ticker as mticker
@@ -15,14 +17,7 @@ from tqdm import tqdm
 import random
 from itertools import combinations
 
-
-SEED = 42
-torch.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-np.random.seed(SEED)
-random.seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+from configs.seed import set_seed
 
 # Logging setup
 log_file = "logs/score_apcer.log"
@@ -315,30 +310,137 @@ def calculate_eer(genuine, imposter, bins=10_001, batch_size=5000):
 # sota_name = 'self_attn'
 # sota_name = 'spatial_channel_mult_12'
 # sota_name = 'spatial_channel_12'
-sota_name = 'dgcnn_simpleview_svm'
-# sota_name = 'lbp_svm'
-save_dir = f"scores/{sota_name}/iPhone12_filled/lmaubo"
-# save_dir = f"scores/sota/{sota_name}/digital/lmaubo"
-genuine_path = f"{save_dir}/genuine.npy"
-imposter_path = f"{save_dir}/imposter.npy" 
- 
-# EG:
-genuine, impostor = np.load(genuine_path), np.load(imposter_path)
-far, frr, thresholds = get_far_frr_thresholds(genuine, impostor)
- 
-print(sota_name)
-# # apcer at 5% bpcer
-# apcer, threshold = get_apcer_at_given_bpcer(far, frr, thresholds, 0.1)
-# print(f"APCER: {apcer:.4} or {apcer * 100:.4}%, Threshold: {threshold:.4}")
- 
-# # bpcer at 5% apcer
-bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.01)
-print(f"BPCER at 1% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
-bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.05)
-print(f"BPCER at 5% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
-bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.1)
-print(f"BPCER at 10% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
+# sota_name = 'spatial_channel_12_depth'
+# sota_name = 'dgcnn_simpleview_svm'
+from pathlib import Path
+import pandas as pd
+import re
 
-calculate_eer(genuine, impostor)
+def natural_sort_key(key):
+    """Extracts numeric parts from protocol names for proper sorting."""
+    match = re.search(r'(\d+)', key)  # Extract the numeric part
+    return int(match.group(1)) if match else float('inf')  # Default to inf for non-numeric keys
 
 
+def main():
+    logger = get_logger(filename = "metrics")
+   
+    # all_files = [f for f in path.rglob("*") if f.is_file()]
+
+    # for file in all_files:
+    #     print(file)
+
+    scores_dir = Path("scores")
+
+    results = {}
+    
+    for protocol_path in scores_dir.iterdir():
+        if not protocol_path.is_dir(): 
+            continue
+        
+        protocol_number = protocol_path.name  
+        
+        for model_path in protocol_path.rglob("*"):
+            if not model_path.is_dir():
+                continue
+            
+            parts = model_path.relative_to(protocol_path).parts
+            print(f"parts: {parts}")
+            if len(parts) < 3:  
+                print("incorrect structre")
+                continue  
+            
+            model_name, dataset, morph_type = parts[:3]
+            logger.info(f"calculating metrics for {model_name} on {dataset}")
+            
+            genuine_path = model_path / "genuine.npy"
+            imposter_path = model_path / "imposter.npy"
+            
+            if genuine_path.exists() and imposter_path.exists():
+                genuine_scores = np.load(genuine_path)
+                imposter_scores = np.load(imposter_path)
+
+                eer = calculate_eer(genuine_scores, imposter_scores)
+                eer = eer*100
+                logger.info(f"eer: {eer}")
+                far, frr, thresholds = get_far_frr_thresholds(genuine_scores, imposter_scores)
+                
+                bpcer1, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.01)
+                logger.info(f"BPCER at 1% APCER: {bpcer1:.4} or {bpcer1 * 100:.4}%, Threshold: {threshold:.4}")
+                bpcer2, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.05)
+                logger.info(f"BPCER at 5% APCER: {bpcer2:.4} or {bpcer2 * 100:.4}%, Threshold: {threshold:.4}")
+                bpcer3, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.1)
+                logger.info(f"BPCER at 10% APCER: {bpcer3:.4} or {bpcer3 * 100:.4}%, Threshold: {threshold:.4}")
+    
+                key = (model_name)
+                if key not in results:
+                    results[key] = {}
+                
+                results[key][protocol_number] = (eer, bpcer1*100, bpcer2*100, bpcer3*100)
+
+                
+        metrics_df = pd.DataFrame.from_dict(results, orient="index")
+
+        # Flatten tuples into separate columns
+        # metrics_df = metrics_df.apply(lambda row: pd.Series({f"{protocol}_{metric}": value 
+                                                            # for protocol, values in row.items() 
+                                                            # for metric, value in zip(["EER", "BPCER@1", "BPCER@5", "BPCER@10"], values)}), axis=1)
+        metrics_df = metrics_df.apply(lambda row: pd.Series({
+            f"{protocol}_{metric}": value 
+            for protocol, values in row.items()  
+            if isinstance(values, (list, tuple))  # Ensure values is iterable
+            for metric, value in zip(["EER", "BPCER@1", "BPCER@5", "BPCER@10"], values)
+        }), axis=1)
+
+        # Reset index and add column names
+        # metrics_df.index = pd.MultiIndex.from_tuples(metrics_df.index, names=["Model"])
+        metrics_df.index.name = "Model"
+
+        # sorted_columns = sorted(metrics_df.columns, key=natural_sort_key)
+        # metrics_df = metrics_df[sorted_columns]  # Reorder columns
+
+        # Save to CSV
+        metrics_df.to_csv("metrics_summary.csv")
+
+        # Print table preview
+        print(metrics_df.head())
+
+
+
+
+
+    
+# sota_name = 'vit_svm_12'
+
+
+# # save_dir = f"scores/{sota_name}/iPhone11_filled/lmaubo"
+# save_dir = f"scores/{sota_name}/iPhone12_filled/lmaubo"
+# # save_dir = f"scores/sota/{sota_name}/digital/lmaubo"
+# genuine_path = f"{save_dir}/genuine.npy"
+# imposter_path = f"{save_dir}/imposter.npy" 
+
+    
+
+# # EG:
+# genuine, impostor = np.load(genuine_path), np.load(imposter_path)
+# far, frr, thresholds = get_far_frr_thresholds(genuine, impostor)
+
+# print(sota_name)
+# # # apcer at 5% bpcer
+# # apcer, threshold = get_apcer_at_given_bpcer(far, frr, thresholds, 0.1)
+# # print(f"APCER: {apcer:.4} or {apcer * 100:.4}%, Threshold: {threshold:.4}")
+
+# # # bpcer at 5% apcer
+# bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.01)
+# print(f"BPCER at 1% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
+# bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.05)
+# print(f"BPCER at 5% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
+# bpcer, threshold = get_bpcer_at_given_apcer(far, frr, thresholds, 0.1)
+# print(f"BPCER at 10% APCER: {bpcer:.4} or {bpcer * 100:.4}%, Threshold: {threshold:.4}")
+
+# calculate_eer(genuine, impostor)
+
+if __name__ == '__main__':
+    set_seed()
+    main()
+    

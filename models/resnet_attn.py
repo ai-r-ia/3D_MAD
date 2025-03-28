@@ -32,7 +32,7 @@ class ChannelAttention(nn.Module):
     
 
 class SpatialAttention(nn.Module):
-    def __init__(self):
+    def __init__(self, kernel_size = 3):
         super(SpatialAttention, self).__init__()
         # self.conv = nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False)
         self.conv = nn.Conv2d(2, 1, kernel_size=3, padding=1, bias=False)
@@ -111,20 +111,12 @@ class AttentionResNet(nn.Module):
         weighted_output = self.avgpool(weighted_output)  # Global Pooling
         # print("Weighted Output Shape Before Flatten:", weighted_output.shape)
         weighted_output = torch.flatten(weighted_output, 1)
-
-        if weighted_output.size(1) != 2048:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            linear_projection = nn.Linear(weighted_output.size(1), 2048)
-            linear_projection.to(device)
-            weighted_output = weighted_output.to(device)
-            weighted_output = linear_projection(weighted_output)  # A projection layer to match size
-
         
         return self.fc(weighted_output)
 
         
 class AttentionResNet2(nn.Module):
-    def __init__(self, attention_types):
+    def __init__(self, attention_types, reduction, kernel_size):
         super(AttentionResNet2, self).__init__()
         self.resnet = models.resnet50(pretrained=True)
         self.resnet = nn.Sequential(*list(self.resnet.children())[:-2])  # Remove avgpool and fc without flattening
@@ -135,9 +127,9 @@ class AttentionResNet2(nn.Module):
 
         for attn in attention_types:
             if attn == "channel":
-                self.attention_layers.append(ChannelAttention(2048))
+                self.attention_layers.append(ChannelAttention(2048, reduction=reduction))
             elif attn == "spatial":
-                self.attention_layers.append(SpatialAttention())
+                self.attention_layers.append(SpatialAttention(kernel_size=kernel_size))
             elif attn == "self":
                 self.attention_layers.append(SelfAttention(2048))
             elif attn == "cross":
@@ -178,18 +170,9 @@ class AttentionResNet2(nn.Module):
         # print(f"weights  shape : {(weights.shape)}")
 
         weighted_output = torch.sum(stacked * weights, dim=-1)
-        # print(f"weightedop shape : {(weighted_output.shape)}")
 
         stacked = stacked.squeeze(-2)  # Remove the extra dimension
-        # print(f"stacked  shape2.0 : {(stacked.shape)}")
 
-        # conv = nn.Conv3d(in_channels=stacked.shape[1], out_channels=, kernel_size=1, bias=False).to(stacked.device)
-
-        # Apply the convolution
-        # weighted_output = conv(stacked)
-        # print(f"weightedop shape 2 : {(weighted_output.shape)}")
-
-        # Continue with the pooling and flattening
         weighted_output = self.avgpool(weighted_output)
         # print(f"weightedop shape 3 : {(weighted_output.shape)}")
         weighted_output = torch.flatten(weighted_output, 1)

@@ -1,180 +1,153 @@
-from tqdm import tqdm
 import cv2
 import numpy as np
+import os
+from tqdm import tqdm
 from skimage.feature import local_binary_pattern
-from sklearn.svm import SVC, LinearSVC
-from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score
 from datasets.datasetwrapper import DatasetWrapper
-from sklearn.pipeline import make_pipeline
-import torch
+from configs.config import get_logger, protocol_dict, create_parser
+from configs.seed import set_seed
 
 AUGMENT_TIMES = 2
-batch_size = 128
-# LBP Parameters
-radius = 1
-n_points = 8 * radius
+batch_size = 16
+radius = 8  # LBP radius
+n_points = 3 * radius  # Number of points to consider in LBP
+num_bins = 512
 
-def extract_lbp_features(image):
-    # If image is a tensor, convert it to NumPy
-    if isinstance(image, torch.Tensor):
-        image = image.cpu().numpy()  # Move to CPU & convert to NumPy
-        if image.ndim == 3 and image.shape[0] in [1, 3]:  # If (C, H, W)
-            image = np.transpose(image, (1, 2, 0))  # Convert to (H, W, C)
+def extract_lbp_features(image, depth_image):
+    """Extracts LBP features from both grayscale and depth images with 512-bin histograms."""
+    
+    # Convert tensors to numpy arrays and remove extra dimensions
+    image = image.cpu().numpy().squeeze()
+    depth_image = depth_image.cpu().numpy().squeeze()
+    
+    # Convert (C, H, W) -> (H, W) if needed
+    if image.ndim == 3:
+        image = image[0]
+    if depth_image.ndim == 3:
+        depth_image = depth_image[0]
+    
+    # Compute LBP
+    lbp = local_binary_pattern(image, n_points, radius, method='uniform')
+    depth_lbp = local_binary_pattern(depth_image, n_points, radius, method='uniform')
+    
+    # Compute histograms with 512 bins
+    hist_color, _ = np.histogram(lbp.ravel(), bins=num_bins, range=(0, num_bins), density=True)
+    hist_depth, _ = np.histogram(depth_lbp.ravel(), bins=num_bins, range=(0, num_bins), density=True)
+    
+    # Concatenate histograms
+    return np.concatenate([hist_color, hist_depth])
 
-    # Ensure image is uint8
-    image = (image * 255).astype(np.uint8) if image.max() <= 1 else image.astype(np.uint8)
+def main(args):
+    protocol_num = protocol_dict[f"{args.trainds}_{args.testds}"]
+    logger = get_logger(filename = "lbp", protocol = protocol_num)
+    logger.info(f"training lbp for protocol {protocol_num}")
 
-    # Check if image is already grayscale
-    if image.ndim == 3 and image.shape[2] == 3:  # (H, W, 3) format
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    elif image.ndim == 2:  # Already grayscale (H, W)
-        gray = image
-    else:
-        raise ValueError(f"Unexpected image shape: {image.shape}")
+    dataset_wrapper_train = DatasetWrapper(root_dir=f"{args.root_dir}/{args.trainds}_filled/color/digital")
+    dataset_wrapper_test = DatasetWrapper(root_dir=f"{args.root_dir}/{args.testds}_filled/color/digital")
 
-    # Apply LBP (Example using OpenCV's Laplacian as a placeholder)
-    lbp = cv2.Laplacian(gray, cv2.CV_64F).flatten()
+    train_dataset = dataset_wrapper_train.get_train_dataset(augment_times=AUGMENT_TIMES, batch_size=batch_size, morph_types=["lmaubo"], num_models=1, shuffle=True)
 
-    return lbp
-
-dataset_wrapper = DatasetWrapper(root_dir="/mnt/extravolume/data/iPhone11/color/digital/")
-
-train_dataset = dataset_wrapper.get_train_dataset(
-    augment_times=AUGMENT_TIMES,
-    batch_size=batch_size,
-    morph_types=["lmaubo"],
-    num_models=1,
-    shuffle=True,
-)
-train_dataset2 = dataset_wrapper.get_test_dataset(
-    augment_times=AUGMENT_TIMES,
-    batch_size=batch_size,
-    morph_types=["lmaubo"],
-    num_models=1,
-    shuffle=True,
-)
-
-# Initialize storage for features and labels
-color_features = []
-depth_features = []
-labels = []
-
-# Iterate over dataloader
-for color_imgs, depth_imgs, label in tqdm(train_dataset, desc="Extracting LBP features"):
-    for i in range(color_imgs.shape[0]):
-     
-        color_img = color_imgs[i].to("cpu")  # Move to CPU if on GPU
-        depth_img = depth_imgs[i].to("cpu")  # Move to CPU if on GPU
-        label_class = label[i].argmax(dim=0).item()        
-        color_feat = extract_lbp_features(color_img)
-        depth_feat = extract_lbp_features(depth_img)
-        
-        color_features.append(color_feat)
-        depth_features.append(depth_feat)
-        labels.append(label_class)
-
-for color_imgs, depth_imgs, label in tqdm(train_dataset2, desc="Extracting LBP features"):
-    for i in range(color_imgs.shape[0]):
-     
-        color_img = color_imgs[i].to("cpu")  # Move to CPU if on GPU
-        depth_img = depth_imgs[i].to("cpu")  # Move to CPU if on GPU
-        label_class = label[i].argmax(dim=0).item()        
-        color_feat = extract_lbp_features(color_img)
-        depth_feat = extract_lbp_features(depth_img)
-        
-        color_features.append(color_feat)
-        depth_features.append(depth_feat)
-        labels.append(label_class)
-        
-# Convert to numpy arrays
-color_features = np.array(color_features)
-depth_features = np.array(depth_features)
-labels = np.array(labels)
-import time
-
-# Train SVM on color image LBP features
-print("Training color SVM...")
-start_time = time.time()
-# color_svm = make_pipeline(StandardScaler(), SVC(kernel="linear", probability=True))
-color_svm = make_pipeline(StandardScaler(), LinearSVC())
-color_svm.fit(color_features, labels)
-end_time = time.time()
-print(f"Color SVM training completed in {end_time - start_time:.2f} seconds")
-
-# Train SVM on depth image LBP features
-print("Training depth SVM...")
-start_time = time.time()
-# depth_svm = make_pipeline(StandardScaler(), SVC(kernel="linear", probability=True))
-depth_svm = make_pipeline(StandardScaler(), LinearSVC())
-depth_svm.fit(depth_features, labels)
-end_time = time.time()
-print(f"Depth SVM training completed in {end_time - start_time:.2f} seconds")
+    test_dataset = dataset_wrapper_test.get_test_dataset(augment_times=AUGMENT_TIMES, batch_size=batch_size, morph_types=["lmaubo"], num_models=1, shuffle=True)
 
 
-dataset_wrapper2 = DatasetWrapper(root_dir="/mnt/extravolume/data/iPhone12/color/digital/")
+    features, labels = [], []
+    for color_imgs, depth_imgs, label in tqdm(train_dataset, desc="Processing Training Data"):
+        label_class = label.argmax(dim=1).cpu().numpy()
+        for img, depth_img, lbl in zip(color_imgs, depth_imgs, label_class):
+            features.append(extract_lbp_features(img, depth_img))
+            labels.append(lbl)
 
-test_dataset = dataset_wrapper2.get_train_dataset(
-    augment_times=AUGMENT_TIMES,
-    batch_size=batch_size,
-    morph_types=["lmaubo"],
-    num_models=1,
-    shuffle=True,
-)
-test_dataset2 = dataset_wrapper2.get_test_dataset(
-    augment_times=AUGMENT_TIMES,
-    batch_size=batch_size,
-    morph_types=["lmaubo"],
-    num_models=1,
-    shuffle=True,
-)
+    features_np = np.array(features)
+    labels_np = np.array(labels)
+    label_cnt = np.bincount(labels_np)
+    logger.info(f"Training class distribution: {str(label_cnt)}")
 
-# Store scores for evaluation
-final_predictions = []
-true_labels = []
+    test_features, test_labels = [], []
+    for color_imgs, depth_imgs, label in tqdm(test_dataset, desc="Processing Test Data"):
+        label_class = label.argmax(dim=1).cpu().numpy()
+        for img, depth_img, lbl in zip(color_imgs, depth_imgs, label_class):
+            test_features.append(extract_lbp_features(img, depth_img))
+            test_labels.append(lbl)
 
-# Iterate over test data
-for color_imgs, depth_imgs, label in tqdm(test_dataset, desc="Evaluating LBP + SVM"):
-    for i in range(color_imgs.shape[0]):
-        color_img = color_imgs[i].to("cpu")  # Move to CPU if on GPU
-        depth_img = depth_imgs[i].to("cpu")  # Move to CPU if on GPU
-        label_class = label[i].argmax(dim=0).item()            
-        # Extract LBP features
-        color_feat = extract_lbp_features(color_img).reshape(1, -1)
-        depth_feat = extract_lbp_features(depth_img).reshape(1, -1)
-        
-        # Get SVM probabilities
-        color_prob = color_svm.predict_proba(color_feat)[0, 1]
-        depth_prob = depth_svm.predict_proba(depth_feat)[0, 1]
-        
-        # Combine scores using average
-        final_score = (color_prob + depth_prob) / 2
-        final_pred = 1 if final_score > 0.5 else 0
-        
-        final_predictions.append(final_pred)
-        true_labels.append(label_class.item())
+    test_features_np = np.array(test_features)
+    test_labels_np = np.array(test_labels)
 
-for color_imgs, depth_imgs, label in tqdm(test_dataset2, desc="Evaluating LBP + SVM"):
-    for i in range(color_imgs.shape[0]):
-        color_img = color_imgs[i].to("cpu")  # Move to CPU if on GPU
-        depth_img = depth_imgs[i].to("cpu")  # Move to CPU if on GPU
-        label_class = label[i].argmax(dim=0).item()            
-        # Extract LBP features
-        color_feat = extract_lbp_features(color_img).reshape(1, -1)
-        depth_feat = extract_lbp_features(depth_img).reshape(1, -1)
-        
-        # Get SVM probabilities
-        color_prob = color_svm.predict_proba(color_feat)[0, 1]
-        depth_prob = depth_svm.predict_proba(depth_feat)[0, 1]
-        
-        # Combine scores using average
-        final_score = (color_prob + depth_prob) / 2
-        final_pred = 1 if final_score > 0.5 else 0
-        
-        final_predictions.append(final_pred)
-        true_labels.append(label_class.item())
+    test_label_cnt = np.bincount(test_labels_np)
+    logger.info(f"Test class distribution: {str(test_label_cnt)}")
 
-# Calculate accuracy
-accuracy = np.mean(np.array(final_predictions) == np.array(true_labels))
-print(f"Final Accuracy: {accuracy:.4f}")
+    scaler = StandardScaler()
+    features_np = scaler.fit_transform(features_np)
+    test_features_np = scaler.transform(test_features_np)
+
+    svm = SVC(kernel='rbf', C=10, gamma='scale', probability=True, class_weight='balanced')
+    # svm = SVC(probability=True, gamma='scale')
+    # svm = SVC(probability=True, gamma='auto')
+    svm.fit(features_np, labels_np)
+
+    preds = svm.predict(test_features_np)
+    probs = svm.predict_proba(test_features_np)
+    accuracy = accuracy_score(test_labels_np, preds)
+    logger.info(f"LBP + SVM Accuracy: {accuracy}")
+    logger.info("computing scores")
+    genuine_scores, imposter_scores = [], []
+    genuine_path, imposter_path = f"scores/Protocol_{protocol_num}/lbp_svm/{args.testds}/lmaubo/genuine.npy", f"scores/Protocol_{protocol_num}/lbp_svm/{args.testds}/lmaubo/imposter.npy"
+    os.makedirs(f"scores/Protocol_{protocol_num}/lbp_svm/{args.testds}/lmaubo/", exist_ok=True)
+
+    for prob, label in zip(probs, test_labels_np):
+        if label == 1:
+            genuine_scores.append(prob[0])
+        else:
+            imposter_scores.append(prob[0])
+
+    np.save(genuine_path, np.array(genuine_scores))
+    np.save(imposter_path, np.array(imposter_scores))
+    logger.info("Scores saved successfully!")
+
+if __name__ == "__main__":
+    set_seed()
+    parser = create_parser()
+    args = parser.parse_args()
+    main(args)
+
+
+
+
+
+# import matplotlib.pyplot as plt
+# plt.figure(figsize=(10, 5))
+# plt.hist(features_np.ravel(), bins=50, alpha=0.75, color="blue", label="Train Features")
+# plt.hist(test_features_np.ravel(), bins=50, alpha=0.75, color="red", label="Test Features")
+# plt.legend()
+# plt.title("Feature Distribution of LBP Histograms")
+# plt.savefig(f"lbp_feature_distribution_11_{num_bins}.png", dpi=300, bbox_inches="tight")
+# plt.close()
+
+# import seaborn as sns
+
+# class_0 = np.mean(features_np[labels_np == 0], axis=0)
+# class_1 = np.mean(features_np[labels_np == 1], axis=0)
+
+# plt.figure(figsize=(12, 5))
+# sns.lineplot(x=range(len(class_0)), y=class_0, label="Class 0 (Bonafide)", color='blue')
+# sns.lineplot(x=range(len(class_1)), y=class_1, label="Class 1 (Morph)", color='red')
+# plt.title("Average LBP Histograms per Class")
+# plt.savefig(f"lbp_class_histograms_11_{num_bins}.png", dpi=300, bbox_inches="tight")
+# plt.close()
+
+# from sklearn.decomposition import PCA
+# import seaborn as sns
+
+# pca = PCA(n_components=2)
+# reduced_features = pca.fit_transform(features_np)
+
+# plt.figure(figsize=(8, 6))
+# sns.scatterplot(x=reduced_features[:, 0], y=reduced_features[:, 1], hue=labels_np, palette="coolwarm")
+# plt.title("PCA Projection of LBP Features")
+# plt.savefig(f"pca_lbp_features_11_{num_bins}.png", dpi=300, bbox_inches="tight")
+# plt.close()
+
+
+    # LBP + SVM Accuracy: 0.7202195285663521
