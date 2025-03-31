@@ -181,30 +181,38 @@ def run_model(attn_type, trainds_name, train_dataset, test_dataset, reduction, k
     logger.info(f"Training {attn_type}")
     model_name = "_".join(attn_type)
 
-    if len(attn_type) > 1:
+    if False and len(attn_type) > 1:
         model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
         model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
         model = DualAttentionModel(model1=model1, model2=model2)
    
         train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}", trainds=train_dataset, testds=test_dataset, logger = logger)
+        # train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}_add", trainds=train_dataset, testds=test_dataset, logger = logger)
    
     else:
-        model1 = AttentionResNet(attention_types=attn_type)
+        model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
         model = SingleAttentionModel(model=model1)
         
         train_model(model=model, model_name= f"{model_name}_{trainds_name}_color", trainds=train_dataset, testds=test_dataset, logger = logger,modeltype = SINGLE, imagetype = 'color')
         
-        model1_depth = AttentionResNet(attention_types=attn_type)
+        model1_depth = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
         depth_model = SingleAttentionModel(model=model1_depth)
         
         train_model(model=depth_model, model_name= f"{model_name}_{trainds_name}_depth", trainds=train_dataset, testds=test_dataset, logger = logger, modeltype = SINGLE, imagetype = 'depth')
+        
+        # model1_cmbd = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+        # model2_cmbd = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+        # model_cmbd = DualAttentionModel(model1=model1_cmbd, model2=model2_cmbd)
+        # train_model(model=model_cmbd, model_name= f"{model_name}_{trainds_name}_cmbd", trainds=train_dataset, testds=test_dataset, logger = logger)
 
     logger.info(f"{attn_type} training done")
     
    
 def main(args):
     protocol_num = 0
-    logger = get_logger(filename = "proposed_params_ablation", protocol = protocol_num)
+    # logger = get_logger(filename = "proposed_params_ablation2", protocol = protocol_num)
+    logger = get_logger(filename = "proposed_imgtype_ablation2", protocol = protocol_num)
+    # logger = get_logger(filename = "proposed_attn_ablation2", protocol = protocol_num)
     logger.info(f"training proposed on {args.trainds}")
     dataset_wrapper = DatasetWrapper(root_dir=f"{args.root_dir}/{args.trainds}_filled/color/digital/")
 
@@ -245,10 +253,12 @@ def main(args):
     logger.info(f"Class distribution in Validation set: {dict(zip(unique_classes, val_counts))}")
     
     multiprocessing.set_start_method("spawn", force=True)
-    # attn_types = [["spatial", "channel"], ["channel"], ["spatial"]]
+    # attn_types = [ ["channel"], ["spatial"]]
+    reductions = [4]
+    kernel_sizes = [5]    
     attn_types = [["spatial", "channel"]]
-    reductions = [4, 8, 16]
-    kernel_sizes = [3,5,7]    
+    # reductions = [4, 8, 16]
+    # kernel_sizes = [3,5,7]    
     processes = []
    
     for reduction in reductions:

@@ -31,21 +31,6 @@ logging.basicConfig(
 torch.backends.cudnn.benchmark = True
 
 printer = "digital"
-morph_types = [
-     "lma",  "mipgan1",  "mordiff", "greedy",  "mipgan2", "pipe"
-    #   'CASIA_MAD_DB',  'Caucasian_MAD_DB',  
-    #   'Indian_MAD_DB', 
-    #   'African_MAD_DB', 
-    #  "lma",  "mipgan1",  "mordiff", "greedy", "lmaubo", "mipgan2", "pipe"
-            #    "lmaubo"
-               ]
-root_dirs = [
-    "/mnt/extravolume/data/frill/digital", 
-    # "/mnt/extravolume/data/ethnicity/digital", 
-            #  "/mnt/extravolume/data/feret/digital"
-            # "/mnt/extravolume/data/synonot/digital"
-             ]
-
 
 def save_apcer_bpcer_values(apcer_dict, bpcer_dict, save_dir, db_name, pct = 0.1, avg = False):
     """

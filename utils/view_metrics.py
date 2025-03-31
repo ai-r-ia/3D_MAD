@@ -4,7 +4,8 @@ import pandas as pd
 df = pd.read_csv('metrics_summary.csv')
 
 # Define the protocol you're interested in (e.g., Protocol 3)
-protocol = 'Protocol_3'
+protocol = 'Protocol_4'
+trainds = "iPhone12"
 columns_to_select = ['Model'] + [col for col in df.columns if protocol in col]
 
 # Filter the DataFrame to only include the relevant columns
@@ -20,8 +21,18 @@ desired_order = ['Model',  # Keep 'Model' column first
 # Reorder the dataframe columns in filtered_df
 filtered_df = filtered_df[desired_order]
 
-# Extract the rows where 'Model' starts with 'spatial_channel'
-filtered_df = filtered_df[filtered_df['Model'].str.startswith('spatial_channel')]
+# filtered_df = filtered_df[~filtered_df['Model'].str.startswith(f'spatial_channel_')]
+# filtered_df = filtered_df[~filtered_df['Model'].str.startswith(f'spatial')]
+# filtered_df = filtered_df[~filtered_df['Model'].str.startswith(f'channel')]
+
+filtered_df = filtered_df[
+    (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+    (filtered_df['Model'].str.endswith('_4_5')) |
+    filtered_df['Model'].str.startswith(f'spatial_{trainds}') |
+    filtered_df['Model'].str.startswith(f'channel_{trainds}')
+]
+
+# filtered_df = filtered_df[filtered_df['Model'].str.startswith(f'spatial_channel_')]
 
 # Print the filtered and reordered DataFrame
 print(filtered_df)

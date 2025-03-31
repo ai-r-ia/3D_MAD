@@ -117,7 +117,7 @@ def eval_and_get_eer(model_name, model, morph_type:str, root_dir, args, logger):
     genuine_path = f"{save_dir}/genuine.npy"
     imposter_path = f"{save_dir}/imposter.npy"
     temp = False
-    if os.path.exists(genuine_path) and os.path.exists(imposter_path):
+    if  os.path.exists(genuine_path) and os.path.exists(imposter_path):
         logging.debug("Loading saved scores...")
         try:
             logging.info(f"Loading saved scores from {genuine_path} and {imposter_path}")
@@ -179,7 +179,7 @@ def compute_eer(models, morph_types, root_dir, args, logger):
         for model_name, model in models.items():
             logger.debug(f"Computing EER for model: {model_name} on {args.testds}")
             eer_table[model_name] = eval_and_get_eer(model_name, model, morph_type, root_dir, args, logger)
-        save_path = f"scores/eer_table_{dataset_name}_params_ablation.pkl" #Note: change based on experiment
+        save_path = f"scores/eer_table_{dataset_name}_imgtype_ablation.pkl" #Note: change based on experiment
         logger.debug(f"Saving EER table to {save_path}")
         with open(save_path, "wb") as f:
             pickle.dump(eer_table, f)
@@ -187,23 +187,54 @@ def compute_eer(models, morph_types, root_dir, args, logger):
 def main(args):
     
     protocol_num = protocol_dict[f"{args.trainds}_{args.testds}"]
-    logger = get_logger(filename = "scores_params_ablation", protocol = protocol_num) #Note: change based on experiment
+    logger = get_logger(filename = "scores_imgtype_ablation2", protocol = protocol_num) #Note: change based on experiment
+    # logger = get_logger(filename = "scores_attn_ablation", protocol = protocol_num) #Note: change based on experiment
+    # logger = get_logger(filename = "scores_params_ablation2", protocol = protocol_num) #Note: change based on experiment
 
+    single = True
     models = {}
-    attn_type = ["spatial", "channel"]
-    reductions = [4, 8, 16]
-    kernel_sizes = [3,5,7] 
-    for reduction in reductions:
-        for kernel_size in kernel_sizes: 
-            model_name = "_".join(attn_type)
-            model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}"
-            model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
-            model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
-            model = DualAttentionModel(model1=model1, model2=model2)
-            pretrained_weights = torch.load(f'checkpoints/Protocol_0/{model_name}/{model_name}_best.pth')
-            model.load_state_dict(pretrained_weights, strict = False)
-            model.eval() 
-            models[model_name] = model
+    reductions = [4]
+    kernel_sizes = [5]    
+    
+    if single:
+        attn_types = [ ["channel"], ["spatial"]]
+        img_types = ["color", "depth", "cmbd"]
+        for attn_type in attn_types:
+            for img_type in img_types:
+                for reduction in reductions:
+                    for kernel_size in kernel_sizes: 
+                        model_name = "_".join(attn_type)
+                        model_name = f"{model_name}_{args.trainds}_{img_type}"
+                        model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+                        model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+                        
+                        if img_type == "cmbd":
+                            model = DualAttentionModel(model1=model1, model2=model2)
+                        else:
+                            model = SingleAttentionModel(model=model1)
+                            
+                        pretrained_weights = torch.load(f'checkpoints/Protocol_0/{model_name}/{model_name}_best.pth')
+                        model.load_state_dict(pretrained_weights, strict = False)
+                        model.eval() 
+                        models[model_name] = model
+        
+    else:
+        attn_types = [["spatial", "channel"]]
+        # reductions = [4, 8, 16]
+        # kernel_sizes = [3,5,7] 
+        for attn_type in attn_types:
+            for reduction in reductions:
+                for kernel_size in kernel_sizes: 
+                    model_name = "_".join(attn_type)
+                    # model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}_add"
+                    model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}_mult"
+                    model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+                    model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
+                    model = DualAttentionModel(model1=model1, model2=model2)
+                    pretrained_weights = torch.load(f'checkpoints/Protocol_0/{model_name}/{model_name}_best.pth')
+                    model.load_state_dict(pretrained_weights, strict = False)
+                    model.eval() 
+                    models[model_name] = model
     compute_eer(models, morph_types, args.root_dir, args, logger) 
 
 if __name__ == "__main__":

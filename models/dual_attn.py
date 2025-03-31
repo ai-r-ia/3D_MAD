@@ -43,12 +43,13 @@ class DualAttentionModel(nn.Module):
         #     # print("combined", combined.shape)
         
         # else:
-        combined = torch.cat([features1, features2], dim=1)  
-        # combined = features1 * features2
+        # combined = torch.cat([features1, features2], dim=1)  
+        # out = self.fc(combined)
         # print(combined.shape)
         
-        # out = self.fc_add(combined)
-        out = self.fc(combined)
+        # combined = features1 * features2
+        combined = features1 + features2
+        out = self.fc_add(combined)
 
         if return_embeddings:
             return out, combined  

@@ -61,7 +61,7 @@ class CrossAttention(nn.Module):
         return attn_output
 
 class AttentionResNet(nn.Module):
-    def __init__(self, attention_types):
+    def __init__(self, attention_types, reduction, kernel_size):
         super(AttentionResNet, self).__init__()
         self.resnet = models.resnet50(pretrained=True)
         self.resnet = nn.Sequential(*list(self.resnet.children())[:-2])  # Remove avgpool and fc without flattening
@@ -72,14 +72,14 @@ class AttentionResNet(nn.Module):
 
         for attn in attention_types:
             if attn == "channel":
-                self.attention_layers.append(ChannelAttention(2048))
+                self.attention_layers.append(ChannelAttention(2048, reduction=reduction))
             elif attn == "spatial":
-                self.attention_layers.append(SpatialAttention())
+                self.attention_layers.append(SpatialAttention(kernel_size=kernel_size))
             elif attn == "self":
                 self.attention_layers.append(SelfAttention(2048))
             elif attn == "cross":
                 self.attention_layers.append(CrossAttention(2048))
-
+                
         self.fc = nn.Linear(2048, 512)
         self.softmax_weights = nn.Parameter(torch.ones(len(attention_types), requires_grad=True))
 
@@ -137,8 +137,11 @@ class AttentionResNet2(nn.Module):
 
         self.fc = nn.Linear(2048, 512)
         self.softmax_weights = nn.Parameter(torch.ones(len(attention_types), requires_grad=True))
-
-        self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        
+        if(len(attention_types) > 1):
+            self.avgpool = nn.AdaptiveAvgPool3d((1,1,1))
+        else:
+            self.avgpool = nn.AdaptiveAvgPool2d(1)
 
     def forward(self, x1, x2=None):
         features = self.resnet(x1)
