@@ -4,8 +4,8 @@ import pandas as pd
 df = pd.read_csv('metrics_summary.csv')
 
 # Define the protocol you're interested in (e.g., Protocol 3)
-protocol = 'Protocol_4'
-trainds = "iPhone12"
+protocol = 'Protocol_3'
+trainds = "iPhone11"
 columns_to_select = ['Model'] + [col for col in df.columns if protocol in col]
 
 # Filter the DataFrame to only include the relevant columns
@@ -25,12 +25,27 @@ filtered_df = filtered_df[desired_order]
 # filtered_df = filtered_df[~filtered_df['Model'].str.startswith(f'spatial')]
 # filtered_df = filtered_df[~filtered_df['Model'].str.startswith(f'channel')]
 
+
+# fusion
 filtered_df = filtered_df[
     (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
     (filtered_df['Model'].str.endswith('_4_5')) |
-    filtered_df['Model'].str.startswith(f'spatial_{trainds}') |
-    filtered_df['Model'].str.startswith(f'channel_{trainds}')
+    (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+    (filtered_df['Model'].str.endswith('_4_5_mult')) |
+    (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+    (filtered_df['Model'].str.endswith('_4_5_add')) 
 ]
+# # attn + img types
+# filtered_df = filtered_df[
+#     (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+#     (filtered_df['Model'].str.endswith('_4_5')) |
+#     (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+#     (filtered_df['Model'].str.endswith('_color')) |
+#     (filtered_df['Model'].str.startswith(f'spatial_channel_{trainds}')) & 
+#     (filtered_df['Model'].str.endswith('_depth')) |
+#     filtered_df['Model'].str.startswith(f'spatial_{trainds}') |
+#     filtered_df['Model'].str.startswith(f'channel_{trainds}')
+# ]
 
 # filtered_df = filtered_df[filtered_df['Model'].str.startswith(f'spatial_channel_')]
 

@@ -47,8 +47,8 @@ class DualAttentionModel(nn.Module):
         # out = self.fc(combined)
         # print(combined.shape)
         
-        # combined = features1 * features2
-        combined = features1 + features2
+        combined = features1 * features2
+        # combined = features1 + features2
         out = self.fc_add(combined)
 
         if return_embeddings:
