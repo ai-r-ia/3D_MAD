@@ -231,7 +231,8 @@ def main(args):
                 for kernel_size in kernel_sizes:  
                     model_name = "_".join(attn_type)
                     # model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}_add"
-                    model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}_mult"
+                    # model_name = f"{model_name}_{args.trainds}_{reduction}_{kernel_size}_mult"
+                    model_name = f"{model_name}_{args.trainds}_final"
                     # model_name = f"{model_name}_{args.trainds}_{img_type}"
                     model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
                     model2 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)

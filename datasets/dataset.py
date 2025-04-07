@@ -40,6 +40,7 @@ class DatasetGenerator(Dataset):
         if color_img is None or depth_img is None or label is None:
             print(f"Warning: No data found for index {idx}")
         
+        # return color_img, depth_img, label, image_path
         return color_img, depth_img, label
 
     # def __getitem__(self, idx) -> Tuple[ndarray, ndarray]:

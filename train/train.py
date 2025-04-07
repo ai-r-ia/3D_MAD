@@ -187,7 +187,8 @@ def run_model(attn_type, trainds_name, train_dataset, test_dataset, reduction, k
         model = DualAttentionModel(model1=model1, model2=model2)
    
         # train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}", trainds=train_dataset, testds=test_dataset, logger = logger)
-        train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}_mult", trainds=train_dataset, testds=test_dataset, logger = logger)
+        # train_model(model=model, model_name= f"{model_name}_{trainds_name}_{reduction}_{kernel_size}_mult", trainds=train_dataset, testds=test_dataset, logger = logger)
+        train_model(model=model, model_name= f"{model_name}_{trainds_name}_final", trainds=train_dataset, testds=test_dataset, logger = logger)
    
     else:
         # model1 = AttentionResNet2(attention_types=attn_type, reduction= reduction, kernel_size=kernel_size)
@@ -212,7 +213,8 @@ def main(args):
     protocol_num = 0
     # logger = get_logger(filename = "proposed_params_ablation2", protocol = protocol_num)
     # logger = get_logger(filename = "proposed_imgtype_ablation2", protocol = protocol_num)
-    logger = get_logger(filename = "proposed_attn_ablation2", protocol = protocol_num)
+    # logger = get_logger(filename = "proposed_attn_ablation2", protocol = protocol_num)
+    logger = get_logger(filename = "proposed_check", protocol = protocol_num)
     logger.info(f"training proposed on {args.trainds}")
     dataset_wrapper = DatasetWrapper(root_dir=f"{args.root_dir}/{args.trainds}_filled/color/digital/")
 

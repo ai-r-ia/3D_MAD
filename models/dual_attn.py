@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 class DualAttentionModel(nn.Module):
-    def __init__(self, model1, model2, feature_dim=512, fc_out_dim=256):
+    def __init__(self, model1, model2, feature_dim=512, fc_out_dim=256, num_classes = 2):
         super(DualAttentionModel, self).__init__()
         self.model1 = model1
         self.model2 = model2
@@ -16,6 +16,7 @@ class DualAttentionModel(nn.Module):
         # self.fc_cross =nn.Sequential(nn.Linear(4096, 2048), nn.Linear(2048, 1024))
         self.fc = nn.Linear(feature_dim*2, fc_out_dim)
         self.fc_add = nn.Linear(feature_dim , fc_out_dim)
+        self.classifier = nn.Linear(fc_out_dim, num_classes) 
 
     def forward(self, input1, input2, return_embeddings=False):
         features1 = self.model1(input1)  
@@ -43,17 +44,21 @@ class DualAttentionModel(nn.Module):
         #     # print("combined", combined.shape)
         
         # else:
-        # combined = torch.cat([features1, features2], dim=1)  
-        # out = self.fc(combined)
+        combined = torch.cat([features1, features2], dim=1)  
+        out = self.fc(combined)
+        logits = self.classifier(out)
         # print(combined.shape)
         
-        combined = features1 * features2
+        # combined = features1 * features2
         # combined = features1 + features2
-        out = self.fc_add(combined)
+        # out = self.fc_add(combined)
 
         if return_embeddings:
-            return out, combined  
-        return out
+            return logits,out
+        return logits
+        # if return_embeddings:
+        #     return out, combined  
+        # return out
 
 
 class SingleAttentionModel(nn.Module):

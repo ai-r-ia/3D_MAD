@@ -28,9 +28,9 @@ def main(args):
             # args.append(
             #     f"python train.py --trainds {args.trainds} --testds {args.testds} -rdir {args.rdir}"
             # )
-            cmds.append(
-                f"python train/train.py --trainds iPhone11"
-            )
+            # cmds.append(
+            #     f"python train/train.py --trainds iPhone11"
+            # )
             cmds.append(
                 f"python train/train.py --trainds iPhone12"
             )
@@ -39,15 +39,15 @@ def main(args):
             cmds.append(
                 f"python train/test.py --trainds iPhone11 --testds iPhone11"
             )
-            cmds.append(
-                f"python train/test.py --trainds iPhone12 --testds iPhone12"
-            )
+            # cmds.append(
+            #     f"python train/test.py --trainds iPhone12 --testds iPhone12"
+            # )
             cmds.append(
                 f"python train/test.py --trainds iPhone11 --testds iPhone12"
             )
-            cmds.append(
-                f"python train/test.py --trainds iPhone12 --testds iPhone11"
-            )            
+            # cmds.append(
+            #     f"python train/test.py --trainds iPhone12 --testds iPhone11"
+            # )            
     
     with Pool(1) as pool:
         pool.map(os.system, cmds)

@@ -24,6 +24,41 @@ def param_conf_inter(FAR, FRR, num_imposteurs, num_clients):
     
     return FARconfMIN, FRRconfMIN, FARconfMAX, FRRconfMAX
 
+# def compute_far_frr(clients, impostors, pas0):
+#     """
+#     Computes FAR and FRR over a range of thresholds while smoothly adjusting EER to 50%.
+#     """
+#     m0 = max(clients)
+#     num_clients = len(clients)
+#     m1 = min(impostors)
+#     num_impostors = len(impostors)
+#     pas1 = (m0 - m1) / pas0
+#     thresholds = np.arange(m1, m0, pas1)
+    
+#     FAR, FRR, valid_thresholds = [], [], []
+    
+#     for threshold in thresholds:
+#         frr_value = 100 * sum(c < threshold for c in clients) / num_clients
+#         far_value = 100 * sum(i >= threshold for i in impostors) / num_impostors
+
+#         FRR.append(frr_value)
+#         FAR.append(far_value)
+#         valid_thresholds.append(threshold)
+
+#     FAR = np.array(FAR)
+#     FRR = np.array(FRR)
+#     valid_thresholds = np.array(valid_thresholds)
+
+#     # Find the threshold where FAR and FRR are closest
+#     eer_index = np.argmin(np.abs(FAR - FRR))
+
+#     # Shift EER to be exactly 50% by adjusting threshold
+#     scale_factor = 50 / max(FAR[eer_index], FRR[eer_index])  # Rescale to 50%
+#     FAR = np.clip(FAR * scale_factor, 0, 50)
+#     FRR = np.clip(FRR * scale_factor, 0, 50)
+
+#     return FAR, FRR, valid_thresholds
+
 
 def compute_far_frr(clients, impostors, pas0):
     """
@@ -116,16 +151,54 @@ def set_det_limits():
     # DET_limits = (0.005, 0.5, 0.005, 0.5)
 
 
-def save_det_plot(datasets: dict, protocol:str):
+# plt.legend(['DET Curve'])
 
+# # FAR vs FRR plot
+# plt.subplot(1, 2, 1)
+# for (sota_name, save_dir), color, linestyle in zip(datasets.items(), colors, linestyles):
+#     genuine_path = f"{save_dir}/genuine.npy"
+#     imposter_path = f"{save_dir}/imposter.npy"
+
+#     genuine = np.load(genuine_path)
+#     impostor = np.load(imposter_path)
+
+#     FAR, FRR, thresholds = compute_far_frr(genuine, impostor, pas0=10001)
+    
+#     plt.plot(thresholds, FAR, linestyle=linestyle, color=color, label=f'FAR - {sota_name}')
+#     plt.plot(thresholds, FRR, linestyle=linestyle, color=color, label=f'FRR - {sota_name}', alpha=0.6)
+
+# plt.xlabel('Threshold')
+# plt.ylabel('Error Rate (%)')
+# plt.title('FAR vs FRR')
+# plt.legend()
+
+# # ROC curve
+# plt.subplot(1, 2, 2)
+# for (sota_name, save_dir), color, linestyle in zip(datasets.items(), colors, linestyles):
+#     genuine_path = f"{save_dir}/genuine.npy"
+#     imposter_path = f"{save_dir}/imposter.npy"
+
+#     genuine = np.load(genuine_path)
+#     impostor = np.load(imposter_path)
+
+#     FAR, FRR, thresholds = compute_far_frr(genuine, impostor, pas0=10001)
+    
+#     plt.plot(FAR, 100 - FRR, linestyle=linestyle, color=color, label=sota_name)
+
+# plt.xlabel('FAR (%)')
+# plt.ylabel('Genuine Acceptance Rate (%)')
+# plt.title('ROC Curve')
+# plt.legend()
+
+# plt.tight_layout()
+# plt.savefig(f"det_combined_{protocol}.png", dpi=300, bbox_inches='tight')
+# plt.savefig(f"det_combined_{protocol}.pdf", dpi=300, bbox_inches='tight')
+# plt.show()
+
+def save_det_plot(ax, datasets: dict, protocol: str):
     colors = ['r', 'b', 'g', 'm', 'y', 'c', 'orange']  # Colors for different datasets
-    linestyles = ['-', '--', '-.', ':', '-:', '---', '.']  # Different line styles
 
-    # plt.figure(figsize=(10, 5))
-
-    # plt.subplot(1, 2, 1)
-    fig, ax = plt.subplots()
-    for (sota_name, save_dir), color, linestyle in zip(datasets.items(), colors, linestyles):
+    for (sota_name, save_dir), color in zip(datasets.items(), colors):
         print(sota_name)
         genuine_path = f"{save_dir}/genuine.npy"
         imposter_path = f"{save_dir}/imposter.npy"
@@ -133,84 +206,48 @@ def save_det_plot(datasets: dict, protocol:str):
         genuine = np.load(genuine_path)
         impostor = np.load(imposter_path)
 
-        FAR, FRR, thresholds = compute_far_frr(genuine, impostor, pas0=10001)
+        FAR, FRR, _ = compute_far_frr(genuine, impostor, pas0=10001)
         FAR = np.clip(FAR / 100, 1e-6, 1 - 1e-6)
         FRR = np.clip(FRR / 100, 1e-6, 1 - 1e-6)
-        
-        # print(f"{sota_name} - FAR min/max: {np.min(FAR)}, {np.max(FAR)}")
-        # print(f"{sota_name} - FRR min/max: {np.min(FRR)}, {np.max(FRR)}")
 
-        plot_det(ax, FAR, FRR, color, label = sota_name )
-        
+        plot_det(ax, FAR, FRR, color, label=sota_name)
 
-    plt.xlabel('MACER (%)')
-    plt.ylabel('BPCER (%)')
-    plt.title('DET curve')
-    ax.legend()
-    # plt.legend(['DET Curve'])
+    ax.set_xlabel('MACER (%)', fontsize = 19)
+    ax.set_ylabel('BPCER (%)', fontsize = 19)
+    
+    # Replace underscores with spaces for a more readable protocol title
+    readable_protocol = protocol.replace('_', ' ')
+    ax.set_title(f'DET Curve - {readable_protocol}', fontsize = 19)
+    ax.legend(fontsize = "13")
 
-    # # FAR vs FRR plot
-    # plt.subplot(1, 2, 1)
-    # for (sota_name, save_dir), color, linestyle in zip(datasets.items(), colors, linestyles):
-    #     genuine_path = f"{save_dir}/genuine.npy"
-    #     imposter_path = f"{save_dir}/imposter.npy"
-
-    #     genuine = np.load(genuine_path)
-    #     impostor = np.load(imposter_path)
-
-    #     FAR, FRR, thresholds = compute_far_frr(genuine, impostor, pas0=10001)
-        
-    #     plt.plot(thresholds, FAR, linestyle=linestyle, color=color, label=f'FAR - {sota_name}')
-    #     plt.plot(thresholds, FRR, linestyle=linestyle, color=color, label=f'FRR - {sota_name}', alpha=0.6)
-
-    # plt.xlabel('Threshold')
-    # plt.ylabel('Error Rate (%)')
-    # plt.title('FAR vs FRR')
-    # plt.legend()
-
-    # # ROC curve
-    # plt.subplot(1, 2, 2)
-    # for (sota_name, save_dir), color, linestyle in zip(datasets.items(), colors, linestyles):
-    #     genuine_path = f"{save_dir}/genuine.npy"
-    #     imposter_path = f"{save_dir}/imposter.npy"
-
-    #     genuine = np.load(genuine_path)
-    #     impostor = np.load(imposter_path)
-
-    #     FAR, FRR, thresholds = compute_far_frr(genuine, impostor, pas0=10001)
-        
-    #     plt.plot(FAR, 100 - FRR, linestyle=linestyle, color=color, label=sota_name)
-
-    # plt.xlabel('FAR (%)')
-    # plt.ylabel('Genuine Acceptance Rate (%)')
-    # plt.title('ROC Curve')
-    # plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(f"det_combined_{protocol}.png", dpi=300, bbox_inches='tight')
-    plt.savefig(f"det_combined_{protocol}.pdf", dpi=300, bbox_inches='tight')
-    plt.show()
-
-
+    # Save individual figure for each protocol
+    fig_filename = f"det_{protocol}.png"
+    ax.figure.savefig(fig_filename, dpi=300, bbox_inches='tight')
+    fig_filename_pdf = f"det_{protocol}.pdf"
+    ax.figure.savefig(fig_filename_pdf, dpi=300, bbox_inches='tight')
 
 def main():
-    protocols = ["Protocol_1","Protocol_2","Protocol_3","Protocol_4"]
-    
+    protocols = ["Protocol_1", "Protocol_2", "Protocol_3", "Protocol_4"]
+
     for protocol in protocols:
+        fig, ax = plt.subplots(figsize=(6, 5))  # Create a single plot for each protocol
+
         dataset = "iPhone12" if protocol in ["Protocol_2", "Protocol_3"] else "iPhone11"
         model_dataset = "iPhone11" if protocol in ["Protocol_3", "Protocol_1"] else "iPhone12"
         datasets = {
-            'Goyal et al.': f"scores/{protocol}/pointnet2_simpleview/{dataset}/lmaubo",
+            'SimpleView': f"scores/{protocol}/pointnet2_simpleview/{dataset}/lmaubo",
             'LBP-SVM': f"scores/{protocol}/lbp_svm/{dataset}/lmaubo",
             'ResNet50-SVM': f"scores/{protocol}/resnet_svm/{dataset}/lmaubo",
             'ViT-SVM': f"scores/{protocol}/vit_svm/{dataset}/lmaubo",
-            'Qi et al.(PointNet++)': f"scores/{protocol}/pointnet2/{dataset}/lmaubo",
-            'Qi et al.(PointNet)': f"scores/{protocol}/pointnet/{dataset}/lmaubo",
+            'PointNet++': f"scores/{protocol}/pointnet2/{dataset}/lmaubo",
+            'PointNet': f"scores/{protocol}/pointnet/{dataset}/lmaubo",
             '3DMDRNet (Proposed)': f"scores/{protocol}/spatial_channel_{model_dataset}_4_5/{dataset}/lmaubo",
         }
-        
-        save_det_plot(datasets, protocol)
+        save_det_plot(ax, datasets, protocol)
 
+        # plt.tight_layout()
+        # No need for `plt.show()` as each plot is saved individually
+        plt.close()  # Close the figure after saving to free up memory
 
 if __name__ == '__main__':
     main()
