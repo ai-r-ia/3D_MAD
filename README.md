@@ -1,3 +1,6 @@
+Official implementation of 3DMDRNet: 3D Morphing Attack Detection with Attention Guided Twin Convolutional Neural Network
+
+
 Protocols:
 0 - only training on either dataset
 1 - train on 11, test on 11
